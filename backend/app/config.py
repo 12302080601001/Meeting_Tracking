@@ -13,7 +13,7 @@ load_dotenv(dotenv_path=root_dir / ".env")
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./meetings.db")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite-preview-06-17")
 
     # JWT — read from env; fall back to a generated secret (stable for one process lifetime)
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", secrets.token_hex(32))

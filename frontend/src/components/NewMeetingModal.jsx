@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { X, Sparkles, FileText, Loader2, Play, Mic, UploadCloud } from 'lucide-react';
-import { createMeeting, createAudioMeeting } from '../api/client';
+import { X, Sparkles, FileText, Loader2, Play, Mic, UploadCloud, FileUp } from 'lucide-react';
+import { createMeeting, createAudioMeeting, createFileMeeting } from '../api/client';
 
 const SAMPLE_TRANSCRIPTS = [
   {
@@ -16,15 +16,17 @@ const SAMPLE_TRANSCRIPTS = [
 ];
 
 export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
-  const [activeTab, setActiveTab] = useState('text'); // 'text' | 'audio'
+  const [activeTab, setActiveTab] = useState('text'); // 'text' | 'audio' | 'file'
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [participants, setParticipants] = useState('');
   const [transcript, setTranscript] = useState('');
   const [audioFile, setAudioFile] = useState(null);
+  const [transcriptFile, setTranscriptFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const audioInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
@@ -35,12 +37,25 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
     setParticipants(sample.participants);
     setTranscript(sample.transcript);
     setAudioFile(null);
+    setTranscriptFile(null);
+  };
+
+  const handleAudioChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAudioFile(file);
+    }
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setAudioFile(file);
+      setTranscriptFile(file);
+      // Auto-fill title from filename if title is empty
+      if (!title.trim()) {
+        const name = file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
+        setTitle(name.charAt(0).toUpperCase() + name.slice(1));
+      }
     }
   };
 
@@ -61,6 +76,11 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
       return;
     }
 
+    if (activeTab === 'file' && !transcriptFile) {
+      setError('Please select a transcript file (.txt, .md, .pdf, .docx).');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -73,13 +93,21 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
           participants: participants.trim(),
           transcript: transcript.trim()
         });
-      } else {
+      } else if (activeTab === 'audio') {
         const formData = new FormData();
         formData.append('audio', audioFile);
         formData.append('title', title.trim());
         formData.append('date', date);
         formData.append('participants', participants.trim());
         res = await createAudioMeeting(formData);
+      } else {
+        // File upload
+        const formData = new FormData();
+        formData.append('file', transcriptFile);
+        formData.append('title', title.trim());
+        formData.append('date', date);
+        formData.append('participants', participants.trim());
+        res = await createFileMeeting(formData);
       }
       
       setLoading(false);
@@ -90,6 +118,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
       setParticipants('');
       setTranscript('');
       setAudioFile(null);
+      setTranscriptFile(null);
       setActiveTab('text');
       onClose();
     } catch (err) {
@@ -97,6 +126,8 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
       setError(err.message || 'Failed to process with Gemini AI.');
     }
   };
+
+  const tabLabel = activeTab === 'audio' ? 'Audio' : activeTab === 'file' ? 'File' : 'Transcript';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -131,6 +162,15 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
             }`}
           >
             <FileText className="w-4 h-4" /> Text Transcript
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('file')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all ${
+              activeTab === 'file' ? 'bg-indigo-600/20 text-indigo-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileUp className="w-4 h-4" /> File Upload
           </button>
           <button
             type="button"
@@ -220,25 +260,59 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-indigo-500 font-mono text-xs leading-relaxed"
               />
             </div>
-          ) : (
+          ) : activeTab === 'file' ? (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Audio File Recording (.mp3, .wav, .m4a) *</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Transcript File (.txt, .md, .pdf, .docx) *</label>
               <div 
-                className="w-full p-8 border-2 border-dashed border-slate-800 rounded-xl bg-slate-950 text-center flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 transition-colors"
+                className={`w-full p-8 border-2 border-dashed rounded-2xl bg-slate-950 text-center flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                  transcriptFile ? 'border-indigo-500/50 bg-indigo-950/20' : 'border-slate-800 hover:border-indigo-500/50'
+                }`}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <input 
                   type="file"
                   className="hidden"
                   ref={fileInputRef}
-                  accept="audio/*,video/webm"
+                  accept=".txt,.md,.text,.markdown,.pdf,.docx"
                   onChange={handleFileChange}
+                />
+                <FileUp className="w-10 h-10 text-indigo-400 mb-2" />
+                {transcriptFile ? (
+                  <>
+                    <p className="text-sm font-semibold text-slate-200">{transcriptFile.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{(transcriptFile.size / 1024).toFixed(1)} KB</p>
+                    <p className="text-xs text-indigo-400 mt-2 font-medium">Click to change file</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-slate-300">Click to upload transcript file</p>
+                    <p className="text-xs text-slate-500 mt-1">Accepts .txt, .md, .pdf, .docx</p>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Audio File Recording (.mp3, .wav, .m4a) *</label>
+              <div 
+                className={`w-full p-8 border-2 border-dashed rounded-2xl bg-slate-950 text-center flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                  audioFile ? 'border-indigo-500/50 bg-indigo-950/20' : 'border-slate-800 hover:border-indigo-500/50'
+                }`}
+                onClick={() => audioInputRef.current?.click()}
+              >
+                <input 
+                  type="file"
+                  className="hidden"
+                  ref={audioInputRef}
+                  accept="audio/*,video/webm"
+                  onChange={handleAudioChange}
                 />
                 <UploadCloud className="w-10 h-10 text-indigo-400 mb-2" />
                 {audioFile ? (
                   <>
                     <p className="text-sm font-semibold text-slate-200">{audioFile.name}</p>
                     <p className="text-xs text-slate-500">{(audioFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <p className="text-xs text-indigo-400 mt-2 font-medium">Click to change file</p>
                   </>
                 ) : (
                   <>
@@ -255,6 +329,8 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
             <p className="text-[11px] text-slate-400">
               {activeTab === 'audio' 
                 ? "Audio will be transcribed and summarized by Gemini multimodal."
+                : activeTab === 'file'
+                ? "File text will be extracted and analyzed by Gemini AI."
                 : "Gemini model will extract Summary, Decisions & Action Items."}
             </p>
             <div className="flex items-center gap-2">
@@ -274,12 +350,12 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess }) {
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Processing {activeTab === 'audio' ? 'Audio' : 'AI'}...
+                    Processing {tabLabel}...
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Process {activeTab === 'audio' ? 'Audio' : 'Transcript'}
+                    Process {tabLabel}
                   </>
                 )}
               </button>

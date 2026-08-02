@@ -1,5 +1,7 @@
 import json
+import io
 import datetime
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -8,7 +10,58 @@ from app import models, schemas
 from app.ai_service import extract_meeting_insights, extract_meeting_insights_from_audio, ask_meeting_question
 from app.auth import get_current_user
 
+logger = logging.getLogger("meetings")
+
 router = APIRouter(prefix="/api/meetings", tags=["Meetings"])
+
+
+def _extract_text_from_file(file_bytes: bytes, filename: str) -> str:
+    """
+    Extract plain text from uploaded transcript files.
+    Supports .txt, .md (UTF-8 text), .pdf (PyPDF2), and .docx (python-docx).
+    """
+    ext = ""
+    if "." in filename:
+        ext = "." + filename.rsplit(".", 1)[-1].lower()
+
+    if ext in (".txt", ".md", ".text", ".markdown"):
+        try:
+            return file_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return file_bytes.decode("latin-1")
+
+    elif ext == ".pdf":
+        try:
+            from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(file_bytes))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            text = "\n".join(pages).strip()
+            if not text:
+                raise ValueError("PDF contained no extractable text.")
+            return text
+        except ImportError:
+            raise HTTPException(status_code=400, detail="PDF parsing library (PyPDF2) is not installed on the server.")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not extract text from PDF: {str(e)}")
+
+    elif ext == ".docx":
+        try:
+            import docx
+            doc = docx.Document(io.BytesIO(file_bytes))
+            text = "\n".join(para.text for para in doc.paragraphs).strip()
+            if not text:
+                raise ValueError("DOCX contained no extractable text.")
+            return text
+        except ImportError:
+            raise HTTPException(status_code=400, detail="DOCX parsing library (python-docx) is not installed on the server.")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not extract text from DOCX: {str(e)}")
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: '{ext}'. Accepted: .txt, .md, .pdf, .docx"
+        )
 
 @router.post("", response_model=schemas.MeetingResponse, status_code=201)
 def create_meeting(
@@ -73,6 +126,52 @@ def create_meeting_from_audio(
         audio_bytes=audio_bytes,
         mime_type=ct or f"audio/{ext.lstrip('.')}",
     )
+
+    return _save_meeting(db, title, meeting_date, participants, transcript_text, extracted_data)
+
+
+@router.post("/upload", response_model=schemas.MeetingResponse, status_code=201)
+def create_meeting_from_file(
+    file: UploadFile = File(...),
+    title: str = Form("Untitled Meeting"),
+    date: str = Form(None),
+    participants: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Upload a transcript file (.txt, .md, .pdf, .docx) and extract meeting insights.
+    The file text content is saved as the transcript and sent through Gemini AI.
+    """
+    filename = (file.filename or "").lower()
+    allowed_extensions = {".txt", ".md", ".text", ".markdown", ".pdf", ".docx"}
+
+    ext = ""
+    if "." in filename:
+        ext = "." + filename.rsplit(".", 1)[-1]
+
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: '{ext}'. Accepted: .txt, .md, .pdf, .docx"
+        )
+
+    file_bytes = file.file.read()
+    if len(file_bytes) < 10:
+        raise HTTPException(status_code=400, detail="Uploaded file appears to be empty or too small.")
+
+    # Extract text from the file
+    transcript_text = _extract_text_from_file(file_bytes, filename)
+
+    if not transcript_text.strip():
+        raise HTTPException(status_code=400, detail="No text could be extracted from the uploaded file.")
+
+    logger.info(f"Extracted {len(transcript_text)} chars from '{file.filename}'")
+
+    meeting_date = date or datetime.date.today().isoformat()
+
+    # AI extraction
+    extracted_data = extract_meeting_insights(transcript=transcript_text)
 
     return _save_meeting(db, title, meeting_date, participants, transcript_text, extracted_data)
 

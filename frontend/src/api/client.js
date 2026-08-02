@@ -86,6 +86,19 @@ export async function createAudioMeeting(formData) {
   return res.json();
 }
 
+export async function createFileMeeting(formData) {
+  const res = await fetch(`${API_BASE}/meetings/upload`, {
+    method: 'POST',
+    headers: getAuthHeaders(true),
+    body: formData
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || 'Failed to process transcript file');
+  }
+  return res.json();
+}
+
 export async function deleteMeeting(id) {
   const res = await fetch(`${API_BASE}/meetings/${id}`, { 
     method: 'DELETE',
