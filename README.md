@@ -20,6 +20,19 @@ Transform raw meeting text transcripts or audio recordings into structured meeti
 
 ---
 
+## 📂 File Ingestion & Document Processing
+The platform supports multi-format meeting ingestion designed for real-world enterprise environments:
+* **Audio Uploads:** Native binary stream ingestion (`audio/mp3`, `audio/wav`) processed instantly via Gemini's multimodal pipeline.
+* **Document Handling:** Supports plain text (`.txt`), Markdown, and native parsing workflows for structured transcript injection.
+* **Fallback Safety Net:** Built-in heuristic parsing engine ensures 100% application continuity even during network or API latency spikes.
+
+## 🚀 Future Scalability Roadmap
+* **Global Vector RAG:** Upgrading from single-meeting context windows to organization-wide vector embeddings (`pgvector`) for historical cross-meeting intelligence.
+* **Real-Time WebSockets:** Live audio stream transcription dashboard updates.
+* **Enterprise Integrations:** Automated webhook triggers to push parsed action items directly to Jira, Slack, and Google Calendar.
+
+---
+
 ## 🛠️ Technology Stack
 
 ### **Backend**
