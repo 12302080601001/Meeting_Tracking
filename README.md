@@ -1,6 +1,6 @@
 # 🎙️ AI Meeting Tracker & Executive Assistant
 
-An intelligent, full-stack meeting management platform powered by **Google Gemini 2.5 Flash** (`google-genai` SDK with strict Pydantic `response_schema` extraction). 
+An intelligent, full-stack meeting management platform powered by **Google Gemini 2.5 Flash** (`google-genai` SDK with strict Pydantic `response_schema` extraction).
 
 Transform raw meeting text transcripts or audio recordings into structured meeting summaries, key decisions, and trackable action items with automated ownership assignment and priority tracking.
 
